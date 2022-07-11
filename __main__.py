@@ -15,28 +15,33 @@ def main(stdscr):
     COLOR_SUCCESS = curses.color_pair(1)
     COLOR_WARNING = curses.color_pair(2)
     COLOR_ERROR = curses.color_pair(3)
+
     home_screen = lambda: select_screen(
         title="Welcome to spelltest!",
         prompt="Select a wordbook",
         options=[
             ("placeholder 0",),
             ("placeholder 1",),
-            ("Create a new wordbook", COLOR_WARNING)
+            ("Create a new wordbook", COLOR_WARNING),
         ],
         option_functions=[
-            print,
-            lambda: select_screen(
-                title="test!",
-                prompt="Select a wordbook",
-                options=[
-                    ("daily practice",),
-                    ("commonly misspelled words",),
-                    # ("create new wordbook", config.COLOR_WARNING),
-                ],
-                option_functions=[],
-            ),
+            None,
+            None,
+            new_wordbook_screen,
         ],
     )
+
+    new_wordbook_screen = lambda: prompt_screen(
+        "Create a new wordbook",
+        messages=[
+            ("Wordbook names must be unique.",),
+            ("Enter an empty string to exit.",),
+        ],
+        # TODO: add a functioning onComplete function
+        onComplete=print,
+        prompt="Name: ",
+    )
+
 
     def select_screen(
         title: str,
@@ -51,7 +56,10 @@ def main(stdscr):
         selected_option_index = 0
         available_lines = curses.LINES - 3 - len(messages)
         if len(options) > available_lines:
-            _stops = [i+available_lines-2 for i in range(0, len(options)-available_lines+2)]
+            _stops = [
+                i + available_lines - 2
+                for i in range(0, len(options) - available_lines + 2)
+            ]
             _stops[0] += 1
             _stops[-1] += 1
             _start = 0
@@ -92,12 +100,12 @@ def main(stdscr):
             add_ellipsis_after_options = False
             if len(options) > available_lines:
                 if selected_option_index < _start:
-                    _start -= (2 if _start == 2 else 1)
+                    _start -= 2 if _start == 2 else 1
                     _stop = _stops[_start]
                 elif selected_option_index >= _stop:
-                    _start += (2 if _start == 0 else 1)
+                    _start += 2 if _start == 0 else 1
                     _stop = _stops[_start]
-                
+
                 if _start != 0:
                     stdscr.addstr("  ...\n")
                 if _stop != len(options):
@@ -135,7 +143,31 @@ def main(stdscr):
             elif key_pressed in [ord("x"), ord("h")]:
                 break
 
-            
+    def prompt_screen(
+        title: str,
+        onComplete: Callable,
+        prompt: str,
+        title_attr: int = config.DEFAULT_TITLE_ATTR,
+        messages: List[Tuple] = [],
+    ):
+        curses.echo()
+        show_cursor()
+        stdscr.clear()
+
+        # title
+        add_title(
+            title,
+            title_attr,
+        )
+
+        # messages
+        for message in messages:
+            stdscr.addstr(*message)
+            stdscr.addstr("\n")
+        stdscr.addstr(prompt)
+        stdscr.refresh()
+        answer = stdscr.getstr().decode("utf-8")
+        onComplete(answer)
 
     def add_key_bindings(key_values: List[Tuple]):
         for key_value in key_values:
@@ -148,7 +180,7 @@ def main(stdscr):
                 curses.LINES - 1, x, key_value[1], config.KEYBINDINGS_VALUE_ATTR
             )
 
-    def add_title(title, title_attr):
+    def add_title(title: str, title_attr: int):
         whitespace = curses.COLS - len(title)
         whitespace_left = whitespace // 2
         whitespace_right = whitespace - whitespace_left
@@ -168,4 +200,4 @@ if __name__ == "__main__":
     # try:
     wrapper(main)
     # except Exception as e:
-        # print(e)
+    # print(e)
