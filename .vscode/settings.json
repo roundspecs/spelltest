@@ -1,5 +1,7 @@
 {
   "cSpell.words": [
+    "addstr",
+    "getch",
     "spelltest",
     "stdscr"
   ]
