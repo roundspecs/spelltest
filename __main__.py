@@ -1,5 +1,6 @@
 import curses
 from curses import wrapper
+import os
 from typing import Callable, List, Tuple
 
 import config
@@ -8,40 +9,51 @@ show_cursor = lambda: print("\x1b[?25h")
 hide_cursor = lambda: print("\x1b[?25l")
 
 
+dirname = os.path.dirname(__file__)
+workbooks_dir_path = os.path.join(dirname, "wordbooks")
+
+
 def main(stdscr):
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.init_pair(3, curses.COLOR_RED, curses.COLOR_BLACK)
     COLOR_SUCCESS = curses.color_pair(1)
     COLOR_WARNING = curses.color_pair(2)
-    COLOR_ERROR = curses.color_pair(3)
+    COLOR_ERROR = curses.color_pair(3) | curses.A_BOLD
 
-    home_screen = lambda: select_screen(
-        title="Welcome to spelltest!",
-        prompt="Select a wordbook",
-        options=[
-            ("placeholder 0",),
-            ("placeholder 1",),
-            ("Create a new wordbook", COLOR_WARNING),
-        ],
-        option_functions=[
-            None,
-            None,
-            new_wordbook_screen,
-        ],
-    )
+    def home_screen(messages: List[Tuple] = []):
+        existing_wordbook_files = os.listdir(workbooks_dir_path)
+        existing_wordbook_names = [
+            file.strip(".json") for file in existing_wordbook_files
+        ]
+        existing_wordbook_names_option = [(name,) for name in existing_wordbook_names]
+        select_screen(
+            title="Welcome to spelltest!",
+            prompt="Select a wordbook",
+            options=[
+                *existing_wordbook_names_option,
+                ("Create a new wordbook", COLOR_WARNING),
+            ],
+            option_functions=[
+                *[
+                    None,
+                ]
+                * len(existing_wordbook_files),
+                new_wordbook_screen,
+            ],
+            messages=messages,
+        )
 
-    new_wordbook_screen = lambda: prompt_screen(
-        "Create a new wordbook",
-        messages=[
-            ("Wordbook names must be unique.",),
-            ("Enter an empty string to exit.",),
-        ],
-        # TODO: add a functioning onComplete function
-        onComplete=print,
-        prompt="Name: ",
-    )
-
+    def new_wordbook_screen():
+        prompt_screen(
+            "Create a new wordbook",
+            messages=[
+                ("Wordbook names must be unique.",),
+                ("Enter an empty string to exit.",),
+            ],
+            onComplete=handle_wordbook_creation,
+            prompt="Name: ",
+        )
 
     def select_screen(
         title: str,
@@ -139,7 +151,7 @@ def main(stdscr):
             ):
                 selected_option_index -= 1
             elif key_pressed in [curses.KEY_ENTER, 10, 13, ord("l")]:
-                option_functions[selected_option_index]()
+                return option_functions[selected_option_index]()
             elif key_pressed in [ord("x"), ord("h")]:
                 break
 
@@ -168,6 +180,34 @@ def main(stdscr):
         stdscr.refresh()
         answer = stdscr.getstr().decode("utf-8")
         onComplete(answer)
+
+    def handle_wordbook_creation(name: str):
+        if name == "":
+            return home_screen()
+        existing_wordbook_files = os.listdir(workbooks_dir_path)
+        existing_wordbook_names = [
+            file.strip(".json") for file in existing_wordbook_files
+        ]
+        if name in existing_wordbook_names:
+            return home_screen(
+                messages=[
+                    (
+                        f"Error: There is already a wordbook named '{name}'.",
+                        COLOR_ERROR,
+                    ),
+                ]
+            )
+        new_wordbook_path = os.path.join(workbooks_dir_path, f"{name}.json")
+        with open(new_wordbook_path, "w"):
+            ...
+        return home_screen(
+            messages=[
+                (
+                    f"Success: Created new wordbook named '{name}'.",
+                    COLOR_SUCCESS,
+                ),
+            ]
+        )
 
     def add_key_bindings(key_values: List[Tuple]):
         for key_value in key_values:
