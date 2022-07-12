@@ -35,13 +35,11 @@ def main(stdscr):
                 ("Create a new wordbook", COLOR_WARNING),
             ],
             option_functions=[
-                *[
-                    None,
-                ]
-                * len(existing_wordbook_files),
+                *[lambda: wordbook_screen(name) for name in existing_wordbook_names],
                 new_wordbook_screen,
             ],
             messages=messages,
+            onExit=exit,
         )
 
     def new_wordbook_screen():
@@ -55,11 +53,28 @@ def main(stdscr):
             prompt="Name: ",
         )
 
+    def wordbook_screen(name):
+        select_screen(
+            title=f"Wordbook: {name}",
+            prompt="Select an option:",
+            options=[
+                ("Start practice",),
+                ("Add new word(s)",),
+                ("Remove word(s)", COLOR_ERROR),
+                ("Reset score", COLOR_ERROR),
+                ("Delete wordbook", COLOR_ERROR),
+            ],
+            # TODO
+            option_functions=[],
+            onExit=home_screen,
+        )
+
     def select_screen(
         title: str,
         prompt: str,
         options: List[Tuple],
         option_functions: List[Callable],
+        onExit: Callable,
         messages: List[Tuple] = [],
         title_attr: int = config.DEFAULT_TITLE_ATTR,
         prompt_attr: int = config.DEFAULT_PROMPT_ATTR,
@@ -153,7 +168,7 @@ def main(stdscr):
             elif key_pressed in [curses.KEY_ENTER, 10, 13, ord("l")]:
                 return option_functions[selected_option_index]()
             elif key_pressed in [ord("x"), ord("h")]:
-                break
+                onExit()
 
     def prompt_screen(
         title: str,
