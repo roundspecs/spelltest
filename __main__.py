@@ -1,6 +1,7 @@
+import csv
 import curses
-from curses import wrapper
 import os
+from curses import wrapper
 from typing import Callable, List, Tuple
 
 import config
@@ -14,18 +15,15 @@ workbooks_dir_path = os.path.join(dirname, "wordbooks")
 
 
 def main(stdscr):
-    curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
-    curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-    curses.init_pair(3, curses.COLOR_RED, curses.COLOR_BLACK)
+    curses.init_pair(1, config.COLOR_SUCCESS, curses.COLOR_BLACK)
+    curses.init_pair(2, config.COLOR_WARNING, curses.COLOR_BLACK)
+    curses.init_pair(3, config.COLOR_ERROR, curses.COLOR_BLACK)
     COLOR_SUCCESS = curses.color_pair(1)
     COLOR_WARNING = curses.color_pair(2)
     COLOR_ERROR = curses.color_pair(3) | curses.A_BOLD
 
     def home_screen(messages: List[Tuple] = []):
-        existing_wordbook_files = os.listdir(workbooks_dir_path)
-        existing_wordbook_names = [
-            file.strip(".json") for file in existing_wordbook_files
-        ]
+        existing_wordbook_names = get_existing_wordbook_names()
         existing_wordbook_names_option = [(name,) for name in existing_wordbook_names]
         select_screen(
             title="Welcome to spelltest!",
@@ -42,18 +40,19 @@ def main(stdscr):
             onExit=exit,
         )
 
-    def new_wordbook_screen():
+    def new_wordbook_screen(messages: List[Tuple] = []):
         prompt_screen(
             "Create a new wordbook",
             messages=[
+                *messages,
                 ("Wordbook names must be unique.",),
-                ("Enter an empty string to exit.",),
             ],
             onComplete=handle_wordbook_creation,
+            onExit=home_screen,
             prompt="Name: ",
         )
 
-    def wordbook_screen(name):
+    def wordbook_screen(name: str):
         select_screen(
             title=f"Wordbook: {name}",
             prompt="Select an option:",
@@ -65,16 +64,138 @@ def main(stdscr):
                 ("Delete wordbook", COLOR_ERROR),
             ],
             # TODO
-            option_functions=[],
+            option_functions=[
+                None,
+                lambda: add_word_screen(name),
+            ],
             onExit=home_screen,
         )
 
+    def add_word_screen(wordbook_name: str):
+        select_screen(
+            title="Add new word(s)",
+            options=[
+                ("Add manually",),
+                ("Add from txt file",),
+            ],
+            option_functions=[
+                lambda: add_word_manually_screen(wordbook_name),
+                lambda: add_word_from_txt_screen(wordbook_name),
+            ],
+            onExit=lambda: wordbook_screen(wordbook_name),
+        )
+
+    def add_word_from_txt_screen(
+        wordbook_name: str,
+        messages: List[Tuple] = [],
+    ):
+        prompt_screen(
+            title="Add word(s) from txt file",
+            messages=[
+                *messages,
+                ("Enter the relative path of the txt file.",),
+                ("Duplicate words will be removed automatically.",),
+            ],
+            prompt="Path: ",
+            onComplete=lambda path: handle_add_word_from_txt(wordbook_name, path),
+            onExit=lambda: add_word_screen(wordbook_name),
+        )
+
+    def add_word_manually_screen(
+        wordbook_name: str,
+        messages: List[Tuple] = [],
+    ):
+        prompt_screen(
+            title="Add word(s) manually",
+            messages=[
+                *messages,
+                ("Enter the words separated by comma",),
+                ("Duplicate words will be removed automatically.",),
+            ],
+            prompt="Words: ",
+            onComplete=lambda comma_sep_words: handle_add_word_manually(wordbook_name, comma_sep_words),
+            onExit=lambda: add_word_screen(wordbook_name),
+        )
+
+    def handle_add_word_manually(wordbook_name: str, comma_sep_words: str):
+        words = [word.strip() for word in comma_sep_words.split(',')]
+        insert_words_to_wordbook(wordbook_name, words)
+
+    def handle_add_word_from_txt(wordbook_name: str, path: str):
+        if not path.endswith(".txt"):
+            path += ".txt"
+        words = []
+        try:
+            with open(path) as f:
+                for word in f.readlines():
+                    word = word.strip()
+                    if word.isalpha():
+                        words.append(word)
+                    else:
+                        return add_word_from_txt_screen(
+                            wordbook_name,
+                            messages=[
+                                (f"Error: '{word}' is not a valid word", COLOR_ERROR),
+                            ],
+                        )
+        except FileNotFoundError:
+            return add_word_from_txt_screen(
+                wordbook_name,
+                messages=[
+                    (f"Error: No txt file named '{path}' found.", COLOR_ERROR),
+                ],
+            )
+        insert_words_to_wordbook(wordbook_name, words)
+
+    def insert_words_to_wordbook(wordbook_name: str, words: List[str]):
+        wordbook_file_name = wordbook_name + ".csv"
+        wordbook_path = os.path.join(workbooks_dir_path, wordbook_file_name)
+        existing_words = []
+        with open(wordbook_path) as csv_file:
+            reader = csv.reader(csv_file)
+            next(reader)
+            for row in reader:
+                existing_words.append(row[0])
+        with open(wordbook_path, "a") as csv_file:
+            writer = csv.writer(csv_file)
+            for word in words:
+                if word not in existing_words:
+                    writer.writerow([word, 0])
+
+    def handle_wordbook_creation(name: str):
+        existing_wordbook_names = get_existing_wordbook_names()
+        if name in existing_wordbook_names:
+            return new_wordbook_screen(
+                messages=[
+                    (
+                        f"Error: There is already a wordbook named '{name}'.",
+                        COLOR_ERROR,
+                    ),
+                ]
+            )
+        new_wordbook_path = os.path.join(workbooks_dir_path, f"{name}.csv")
+        with open(new_wordbook_path, "w"):
+            ...
+        return home_screen(
+            messages=[
+                (
+                    f"Success: Created new wordbook named '{name}'.",
+                    COLOR_SUCCESS,
+                ),
+            ]
+        )
+
+    def get_existing_wordbook_names():
+        existing_wordbook_files = os.listdir(workbooks_dir_path)
+        existing_wordbook_names = [file[:-4] for file in existing_wordbook_files]
+        return existing_wordbook_names
+
     def select_screen(
         title: str,
-        prompt: str,
         options: List[Tuple],
         option_functions: List[Callable],
         onExit: Callable,
+        prompt: str = "Select an option",
         messages: List[Tuple] = [],
         title_attr: int = config.DEFAULT_TITLE_ATTR,
         prompt_attr: int = config.DEFAULT_PROMPT_ATTR,
@@ -99,7 +220,7 @@ def main(stdscr):
             # key bindings
             add_key_bindings(
                 [
-                    ("x", "back"),
+                    ("x", "exit"),
                     ("enter", "select"),
                     ("arrow", "navigation"),
                     ("h", "back"),
@@ -157,23 +278,24 @@ def main(stdscr):
             stdscr.refresh()
             key_pressed = stdscr.getch()
             if (
-                key_pressed in [ord("j"), curses.KEY_DOWN]
+                key_pressed in config.KEYS["down"]
                 and selected_option_index != len(options) - 1
             ):
                 selected_option_index += 1
-            elif (
-                key_pressed in [ord("k"), curses.KEY_UP] and selected_option_index != 0
-            ):
+            elif key_pressed in config.KEYS["up"] and selected_option_index != 0:
                 selected_option_index -= 1
-            elif key_pressed in [curses.KEY_ENTER, 10, 13, ord("l")]:
+            elif key_pressed in config.KEYS["select"]:
                 return option_functions[selected_option_index]()
-            elif key_pressed in [ord("x"), ord("h")]:
+            elif key_pressed in config.KEYS["back"]:
                 onExit()
+            elif key_pressed in config.KEYS["exit"]:
+                exit()
 
     def prompt_screen(
         title: str,
         onComplete: Callable,
         prompt: str,
+        onExit: Callable,
         title_attr: int = config.DEFAULT_TITLE_ATTR,
         messages: List[Tuple] = [],
     ):
@@ -188,41 +310,17 @@ def main(stdscr):
         )
 
         # messages
+        messages = [("Enter empty string to exit",)] + messages
         for message in messages:
             stdscr.addstr(*message)
             stdscr.addstr("\n")
         stdscr.addstr(prompt)
         stdscr.refresh()
         answer = stdscr.getstr().decode("utf-8")
-        onComplete(answer)
-
-    def handle_wordbook_creation(name: str):
-        if name == "":
-            return home_screen()
-        existing_wordbook_files = os.listdir(workbooks_dir_path)
-        existing_wordbook_names = [
-            file.strip(".json") for file in existing_wordbook_files
-        ]
-        if name in existing_wordbook_names:
-            return home_screen(
-                messages=[
-                    (
-                        f"Error: There is already a wordbook named '{name}'.",
-                        COLOR_ERROR,
-                    ),
-                ]
-            )
-        new_wordbook_path = os.path.join(workbooks_dir_path, f"{name}.json")
-        with open(new_wordbook_path, "w"):
-            ...
-        return home_screen(
-            messages=[
-                (
-                    f"Success: Created new wordbook named '{name}'.",
-                    COLOR_SUCCESS,
-                ),
-            ]
-        )
+        if answer == "":
+            onExit()
+        else:
+            onComplete(answer)
 
     def add_key_bindings(key_values: List[Tuple]):
         for key_value in key_values:
