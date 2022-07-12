@@ -3,12 +3,17 @@ import curses
 MIN_SCREEN_COLS = 50
 MIN_SCREEN_LINES = 10
 
-# curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
-# curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-# curses.init_pair(3, curses.COLOR_RED, curses.COLOR_BLACK)
-# COLOR_SUCCESS = curses.color_pair(1)
-# COLOR_WARNING = curses.color_pair(2)
-# COLOR_ERROR = curses.color_pair(3)
+KEYS = {
+    "select": [curses.KEY_ENTER, 10, 13, ord("l"), curses.KEY_RIGHT],
+    "down": [ord("j"), curses.KEY_DOWN],
+    "up": [ord("k"), curses.KEY_UP],
+    "back": [ord("h"), curses.KEY_LEFT],
+    "exit": [ord("x")],
+}
+
+COLOR_SUCCESS = curses.COLOR_GREEN
+COLOR_WARNING = curses.COLOR_YELLOW
+COLOR_ERROR = curses.COLOR_RED
 
 DEFAULT_TITLE_ATTR = curses.A_REVERSE
 DEFAULT_PROMPT_ATTR = curses.A_BOLD
