@@ -26,7 +26,7 @@ def main(stdscr):
         existing_wordbook_names_option = [(name,) for name in existing_wordbook_names]
         select_screen(
             title="Welcome to spelltest!",
-            prompt="Select a wordbook",
+            prompt="Select a wordbook:",
             options=[
                 *existing_wordbook_names_option,
                 ("Create a new wordbook", COLOR_WARNING),
@@ -41,14 +41,14 @@ def main(stdscr):
 
     def new_wordbook_screen(messages: List[Tuple] = []):
         prompt_screen(
-            "Create a new wordbook",
+            title="Create a new wordbook",
             messages=[
                 *messages,
                 ("Wordbook names must be unique.",),
             ],
+            prompt="Name: ",
             onComplete=handle_wordbook_creation,
             onExit=home_screen,
-            prompt="Name: ",
         )
 
     def wordbook_screen(name: str):
