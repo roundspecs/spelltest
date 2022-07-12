@@ -1,8 +1,10 @@
 import csv
 import curses
+import json
 import os
+import requests
 from curses import wrapper
-from typing import Callable, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 import config
 
@@ -11,6 +13,48 @@ hide_cursor = lambda: print("\x1b[?25l")
 
 dirname = os.path.dirname(__file__)
 workbooks_dir_path = os.path.join(dirname, "wordbooks")
+
+
+def get_word_details(word: str) -> dict[str, str|List[dict]]:
+    response = requests.get(f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}")
+    word_details = {
+        "word": word,
+        "phonetics": [],
+        "meanings": [],
+    }
+    if response.status_code == 200:
+        response_data: Dict = response.json()[0]
+        for item in response_data.get("phonetics", []):
+            word_details["phonetics"].append(
+                {
+                    "audio": item.get("audio", ""),
+                    "text": item.get("text", ""),
+                }
+            )
+        for meaning in response_data.get("meanings", []):
+            parts_of_speech = meaning.get("partOfSpeech", None)
+            definitions = []
+            synonyms = []
+            antonyms = []
+            for definition in meaning.get("definitions", []):
+                d = definition.get("definition", False)
+                if type(d) == str and word not in d.lower():
+                    definitions.append(d)
+                synonyms.extend(definition.get("synonyms"))
+                antonyms.extend(definition.get("antonyms"))
+            synonyms.extend(meaning.get("synonyms"))
+            antonyms.extend(meaning.get("antonyms"))
+            word_details["meanings"].append(
+                {
+                    "partsOfSpeech": parts_of_speech,
+                    "definitions": definitions,
+                    "synonyms": synonyms,
+                    "antonyms": antonyms
+                }
+            )
+    # print(json.dumps(word_details, indent=2))
+    # print(word_details)
+    return word_details
 
 
 def main(stdscr):
@@ -32,7 +76,8 @@ def main(stdscr):
                 ("Create a new wordbook", COLOR_WARNING),
             ],
             option_functions=[
-                *[lambda index: wordbook_screen(existing_wordbook_names[index])]*len(existing_wordbook_names),
+                *[lambda index: wordbook_screen(existing_wordbook_names[index])]
+                * len(existing_wordbook_names),
                 lambda _: new_wordbook_screen(),
             ],
             messages=messages,
@@ -130,7 +175,12 @@ def main(stdscr):
             # title_attr=COLOR_ERROR | config.DEFAULT_TITLE_ATTR,
             prompt="Select the word you want to delete:",
             options=options,
-            option_functions=[lambda index: handle_remove_word(wordbook_name, wordbook_path, existing_words[index])]*len(options),
+            option_functions=[
+                lambda index: handle_remove_word(
+                    wordbook_name, wordbook_path, existing_words[index]
+                )
+            ]
+            * len(options),
             onExit=lambda: wordbook_screen(wordbook_name),
         )
 
@@ -393,6 +443,7 @@ def main(stdscr):
 
 if __name__ == "__main__":
     # try:
-    wrapper(main)
+    # wrapper(main)
     # except Exception as e:
     # print(e)
+    get_word_details("hello")
