@@ -9,7 +9,6 @@ import config
 show_cursor = lambda: print("\x1b[?25h")
 hide_cursor = lambda: print("\x1b[?25l")
 
-
 dirname = os.path.dirname(__file__)
 workbooks_dir_path = os.path.join(dirname, "wordbooks")
 
@@ -113,12 +112,14 @@ def main(stdscr):
                 ("Duplicate words will be removed automatically.",),
             ],
             prompt="Words: ",
-            onComplete=lambda comma_sep_words: handle_add_word_manually(wordbook_name, comma_sep_words),
+            onComplete=lambda comma_sep_words: handle_add_word_manually(
+                wordbook_name, comma_sep_words
+            ),
             onExit=lambda: add_word_screen(wordbook_name),
         )
 
     def handle_add_word_manually(wordbook_name: str, comma_sep_words: str):
-        words = [word.strip() for word in comma_sep_words.split(',')]
+        words = [word.strip() for word in comma_sep_words.split(",")]
         insert_words_to_wordbook(wordbook_name, words)
 
     def handle_add_word_from_txt(wordbook_name: str, path: str):
