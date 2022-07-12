@@ -32,8 +32,8 @@ def main(stdscr):
                 ("Create a new wordbook", COLOR_WARNING),
             ],
             option_functions=[
-                *[lambda: wordbook_screen(name) for name in existing_wordbook_names],
-                new_wordbook_screen,
+                *[lambda index: wordbook_screen(existing_wordbook_names[index])]*len(existing_wordbook_names),
+                lambda _: new_wordbook_screen(),
             ],
             messages=messages,
             onExit=exit,
@@ -65,7 +65,8 @@ def main(stdscr):
             # TODO
             option_functions=[
                 None,
-                lambda: add_word_screen(name),
+                lambda _: add_word_screen(name),
+                lambda _: remove_words_screen(name),
             ],
             onExit=home_screen,
         )
@@ -78,8 +79,8 @@ def main(stdscr):
                 ("Add from txt file",),
             ],
             option_functions=[
-                lambda: add_word_manually_screen(wordbook_name),
-                lambda: add_word_from_txt_screen(wordbook_name),
+                lambda _: add_word_manually_screen(wordbook_name),
+                lambda _: add_word_from_txt_screen(wordbook_name),
             ],
             onExit=lambda: wordbook_screen(wordbook_name),
         )
@@ -118,6 +119,38 @@ def main(stdscr):
             onExit=lambda: add_word_screen(wordbook_name),
         )
 
+    def remove_words_screen(wordbook_name: str):
+        wordbook_path = get_wordbook_path(wordbook_name)
+        existing_words = get_existing_words(wordbook_path)
+        options = []
+        for word in existing_words:
+            options.append((word,))
+        select_screen(
+            title="Remove Words",
+            # title_attr=COLOR_ERROR | config.DEFAULT_TITLE_ATTR,
+            prompt="Select the word you want to delete:",
+            options=options,
+            option_functions=[lambda index: handle_remove_word(wordbook_name, wordbook_path, existing_words[index])]*len(options),
+            onExit=lambda: wordbook_screen(wordbook_name),
+        )
+
+    def handle_remove_word(wordbook_name: str, wordbook_path: str, word_to_remove: str):
+        existing_rows = []
+        with open(wordbook_path, "r") as csv_file:
+            reader = csv.reader(csv_file)
+            for row in reader:
+                existing_rows.append(row)
+        header, entries = existing_rows[:1], existing_rows[1:]
+        new_entries = []
+        for entry in entries:
+            if entry[0] != word_to_remove:
+                new_entries.append(entry)
+        with open(wordbook_path, "w") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerows(header)
+            writer.writerows(new_entries)
+        remove_words_screen(wordbook_name)
+
     def handle_add_word_manually(wordbook_name: str, comma_sep_words: str):
         words = [word.strip() for word in comma_sep_words.split(",")]
         insert_words_to_wordbook(wordbook_name, words)
@@ -149,19 +182,18 @@ def main(stdscr):
         insert_words_to_wordbook(wordbook_name, words)
 
     def insert_words_to_wordbook(wordbook_name: str, words: List[str]):
-        wordbook_file_name = wordbook_name + ".csv"
-        wordbook_path = os.path.join(workbooks_dir_path, wordbook_file_name)
-        existing_words = []
-        with open(wordbook_path) as csv_file:
-            reader = csv.reader(csv_file)
-            next(reader)
-            for row in reader:
-                existing_words.append(row[0])
+        wordbook_path = get_wordbook_path(wordbook_name)
+        existing_words = get_existing_words(wordbook_path)
         with open(wordbook_path, "a") as csv_file:
             writer = csv.writer(csv_file)
             for word in words:
                 if word not in existing_words:
                     writer.writerow([word, 0])
+
+    def get_wordbook_path(wordbook_name):
+        wordbook_file_name = wordbook_name + ".csv"
+        wordbook_path = os.path.join(workbooks_dir_path, wordbook_file_name)
+        return wordbook_path
 
     def handle_wordbook_creation(name: str):
         existing_wordbook_names = get_existing_wordbook_names()
@@ -185,6 +217,15 @@ def main(stdscr):
                 ),
             ]
         )
+
+    def get_existing_words(wordbook_path):
+        existing_words = []
+        with open(wordbook_path) as csv_file:
+            reader = csv.reader(csv_file)
+            next(reader)
+            for row in reader:
+                existing_words.append(row[0])
+        return existing_words
 
     def get_existing_wordbook_names():
         existing_wordbook_files = os.listdir(workbooks_dir_path)
@@ -286,7 +327,7 @@ def main(stdscr):
             elif key_pressed in config.KEYS["up"] and selected_option_index != 0:
                 selected_option_index -= 1
             elif key_pressed in config.KEYS["select"]:
-                return option_functions[selected_option_index]()
+                return option_functions[selected_option_index](selected_option_index)
             elif key_pressed in config.KEYS["back"]:
                 onExit()
             elif key_pressed in config.KEYS["exit"]:
