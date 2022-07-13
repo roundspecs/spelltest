@@ -4,6 +4,8 @@
     "getch",
     "getstr",
     "getyx",
+    "playsound",
+    "pyttsx",
     "spelltest",
     "stdscr"
   ]

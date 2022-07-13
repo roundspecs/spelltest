@@ -1,21 +1,31 @@
 import csv
 import curses
 import json
+import pyttsx3
 import os
 import requests
 from curses import wrapper
 from typing import Any, Callable, Dict, List, Tuple
 
 import config
+import playsound
+
+tts = pyttsx3.init()
+tts.setProperty('rate', config.TTS_RATE)
+
+def speak(text):
+  tts.say(text)
+  tts.runAndWait()
 
 show_cursor = lambda: print("\x1b[?25h")
 hide_cursor = lambda: print("\x1b[?25l")
 
 dirname = os.path.dirname(__file__)
-workbooks_dir_path = os.path.join(dirname, "wordbooks")
+wordbooks_dir_path = os.path.join(dirname, "wordbooks")
 
+# TODO: Redesign to class
 
-def get_word_details(word: str) -> dict[str, str|List[dict]]:
+def get_word_details(word: str) -> dict[str, str | List[dict]]:
     response = requests.get(f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}")
     word_details = {
         "word": word,
@@ -49,7 +59,7 @@ def get_word_details(word: str) -> dict[str, str|List[dict]]:
                     "partsOfSpeech": parts_of_speech,
                     "definitions": definitions,
                     "synonyms": synonyms,
-                    "antonyms": antonyms
+                    "antonyms": antonyms,
                 }
             )
     # print(json.dumps(word_details, indent=2))
@@ -101,24 +111,98 @@ def main(stdscr):
             title=f"Wordbook: {name}",
             prompt="Select an option:",
             options=[
-                ("Start practice",),
+                ("Start practice (might take a little time to load)",),
                 ("Add new word(s)",),
                 ("Remove word(s)", COLOR_ERROR),
                 ("Reset score", COLOR_ERROR),
                 ("Delete wordbook", COLOR_ERROR),
             ],
-            # TODO
             option_functions=[
-                None,
+                lambda _: practice_screen(name),
                 lambda _: add_word_screen(name),
                 lambda _: remove_words_screen(name),
             ],
             onExit=home_screen,
         )
 
-    def add_word_screen(wordbook_name: str):
+    def practice_screen(wordbook_name: str):
+        wordbook_path = get_wordbook_path(wordbook_name)
+        words, scores = get_existing_words_n_scores(wordbook_path)
+        class ExitException(Exception):...
+
+        def on_exit():
+            raise ExitException()
+
+        def on_complete(input_spelling, word_details):
+            if input_spelling == 'r':
+                take_test(word_details)
+            elif input_spelling == '':
+                return
+        
+        def get_phonetics_n_pronounce(phonetics, word):
+            all_phonetics = []
+            spoke = False
+            for item in phonetics:
+                audio = item.get("audio")
+                if audio:
+                    playsound.playsound(audio)
+                    spoke = True
+                text = item.get("text")
+                if text:
+                    all_phonetics.append(item.get("text"))
+            if not spoke:
+                speak(word)
+            return ', '. join(all_phonetics)
+
+        def get_meaning_messages(meanings):
+            messages = []
+            for meaning in meanings:
+                messages.append((meaning.get("partsOfSpeech"), curses.A_ITALIC | curses.A_DIM))
+                definitions = meaning.get("definitions")
+                if definitions:
+                    messages.append((" Definitions:", COLOR_WARNING))
+                for definition in definitions:
+                    messages.append((f" - {definition}",))
+                synonyms = meaning.get("synonyms")
+                if synonyms:
+                    messages.append((" synonyms:", COLOR_WARNING))
+                for synonym in synonyms:
+                    messages.append((f" - {synonym}",))
+                antonyms = meaning.get("antonyms")
+                if antonyms:
+                    messages.append((" antonyms:", COLOR_WARNING))
+                for antonym in antonyms:
+                    messages.append((f" - {antonym}",))
+                
+            return messages
+
+        def take_test(word_details):
+            prompt_screen(
+                title=f"{wordbook_name}: Practice",
+                messages=[
+                    ("Enter 'r' to repeat.",),
+                    (f"Phonetics: {get_phonetics_n_pronounce(word_details['phonetics'], word_details['word'])}", COLOR_WARNING),
+                    *get_meaning_messages(word_details['meanings']),
+                ],
+                prompt="Spelling: ",
+                onComplete=lambda input_spelling:on_complete(input_spelling, word_details),
+                onExit=on_exit,
+            )
+
+        try:
+            while True:
+                min_score = min(scores)
+                for word, score in zip(words, scores):
+                    if score == min_score:
+                        word_details = get_word_details(word)
+                        take_test(word_details)
+        except ExitException:
+            wordbook_screen(wordbook_name)
+
+    def add_word_screen(wordbook_name: str, messages: List[Tuple] = []):
         select_screen(
             title="Add new word(s)",
+            messages=messages,
             options=[
                 ("Add manually",),
                 ("Add from txt file",),
@@ -204,6 +288,9 @@ def main(stdscr):
     def handle_add_word_manually(wordbook_name: str, comma_sep_words: str):
         words = [word.strip() for word in comma_sep_words.split(",")]
         insert_words_to_wordbook(wordbook_name, words)
+        add_word_screen(
+            wordbook_name, messages=[("Success: Added the words.", COLOR_SUCCESS)]
+        )
 
     def handle_add_word_from_txt(wordbook_name: str, path: str):
         if not path.endswith(".txt"):
@@ -242,7 +329,7 @@ def main(stdscr):
 
     def get_wordbook_path(wordbook_name):
         wordbook_file_name = wordbook_name + ".csv"
-        wordbook_path = os.path.join(workbooks_dir_path, wordbook_file_name)
+        wordbook_path = os.path.join(wordbooks_dir_path, wordbook_file_name)
         return wordbook_path
 
     def handle_wordbook_creation(name: str):
@@ -256,9 +343,10 @@ def main(stdscr):
                     ),
                 ]
             )
-        new_wordbook_path = os.path.join(workbooks_dir_path, f"{name}.csv")
-        with open(new_wordbook_path, "w"):
-            ...
+        new_wordbook_path = os.path.join(wordbooks_dir_path, f"{name}.csv")
+        with open(new_wordbook_path, "w") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(["word", "score"])
         return home_screen(
             messages=[
                 (
@@ -277,8 +365,19 @@ def main(stdscr):
                 existing_words.append(row[0])
         return existing_words
 
+    def get_existing_words_n_scores(wordbook_path):
+        existing_words = []
+        scores = []
+        with open(wordbook_path) as csv_file:
+            reader = csv.reader(csv_file)
+            next(reader)
+            for row in reader:
+                existing_words.append(row[0])
+                scores.append(int(row[1]))
+        return existing_words, scores
+
     def get_existing_wordbook_names():
-        existing_wordbook_files = os.listdir(workbooks_dir_path)
+        existing_wordbook_files = os.listdir(wordbooks_dir_path)
         existing_wordbook_names = [file[:-4] for file in existing_wordbook_files]
         return existing_wordbook_names
 
@@ -443,7 +542,7 @@ def main(stdscr):
 
 if __name__ == "__main__":
     # try:
-    # wrapper(main)
+    wrapper(main)
     # except Exception as e:
     # print(e)
-    get_word_details("hello")
+    # get_word_details("hello")
